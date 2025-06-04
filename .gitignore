@@ -63,3 +63,4 @@ htmlcov/
 *.pt
 *.pth
 *.bin
+temp/
