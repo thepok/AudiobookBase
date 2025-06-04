@@ -1,86 +1,45 @@
-"""Helper utilities for synthesizing speech via ``edge-tts``."""
+"""Helper utilities for synthesizing speech via ``piper``."""
 
-import asyncio
-from typing import List
+import wave
+from pathlib import Path
+from typing import Optional
 
-import edge_tts
-
-MAX_CHARS = 4000
-
-
-def _split_text(text: str, max_chars: int = MAX_CHARS) -> List[str]:
-    """Split ``text`` into chunks not exceeding ``max_chars``.
-
-    Splitting priority is as follows: two newlines (``"\n\n"``), single
-    newline, sentence punctuation (``. ! ?``), spaces and finally hard splits
-    if none of the above produce short enough chunks.
-    """
-    if len(text) <= max_chars:
-        return [text]
-
-    separators = ["\n\n", "\n", ".", "!", "?", " ", ""]
-    chunks: List[str] = []
-    length = len(text)
-    start = 0
-
-    while start < length:
-        end = min(start + max_chars, length)
-        cut = None
-        for sep in separators:
-            if sep:
-                idx = text.rfind(sep, start, end)
-                if idx != -1 and idx + len(sep) <= end and idx >= start:
-                    cut = idx + len(sep)
-                    break
-            else:
-                cut = end
-        if cut is None or cut <= start:
-            cut = end
-
-        chunk = text[start:cut].strip()
-        if chunk:
-            chunks.append(chunk)
-        start = cut
-
-    return chunks
+from piper import PiperVoice, download
 
 
-async def _synthesize_chunk(chunk: str, voice: str, rate: str, volume: str, pitch: str) -> bytes:
-    communicator = edge_tts.Communicate(text=chunk, voice=voice, rate=rate, volume=volume, pitch=pitch)
-    audio_bytes = bytearray()
-    async for msg in communicator.stream():
-        if msg["type"] == "audio":
-            audio_bytes.extend(msg["data"])
-    return bytes(audio_bytes)
-
-
-async def text_to_speech_async(
+def piper_text_to_speech(
     text: str,
     output_file: str,
-    voice: str = "en-US-AriaNeural",
-    rate: str = "+0%",
-    volume: str = "+0%",
-    pitch: str = "+0Hz",
+    voice: str = "en_US-lessac-medium",
+    model_dir: str = "piper_voices",
+    speaker_id: Optional[int] = None,
+    length_scale: Optional[float] = None,
+    noise_scale: Optional[float] = None,
+    noise_w: Optional[float] = None,
+    sentence_silence: float = 0.0,
 ) -> None:
-    """Convert text to speech using edge-tts.
+    """Convert ``text`` to speech using ``piper``.
 
-    The text is split into sensible chunks (4000 chars by default) to avoid
-    service limits. The resulting audio is saved to ``output_file``.
+    The required voice model is downloaded automatically into ``model_dir`` if
+    missing. The resulting WAV audio is saved to ``output_file``.
     """
-    chunks = _split_text(text, MAX_CHARS)
-    with open(output_file, "wb") as f:
-        for chunk in chunks:
-            audio = await _synthesize_chunk(chunk, voice, rate, volume, pitch)
-            f.write(audio)
 
+    voices_info = download.get_voices(model_dir)
+    download.ensure_voice_exists(
+        voice, data_dirs=[model_dir], download_dir=model_dir, voices_info=voices_info
+    )
 
-def text_to_speech(
-    text: str,
-    output_file: str,
-    voice: str = "en-US-AriaNeural",
-    rate: str = "+0%",
-    volume: str = "+0%",
-    pitch: str = "+0Hz",
-) -> None:
-    """Synchronous wrapper around :func:`text_to_speech_async`."""
-    asyncio.run(text_to_speech_async(text, output_file, voice, rate, volume, pitch))
+    model_path = Path(model_dir) / f"{voice}.onnx"
+    config_path = Path(model_dir) / f"{voice}.onnx.json"
+    piper_voice = PiperVoice.load(model_path, config_path)
+
+    with wave.open(output_file, "wb") as wav_file:
+        piper_voice.synthesize(
+            text,
+            wav_file,
+            speaker_id=speaker_id,
+            length_scale=length_scale,
+            noise_scale=noise_scale,
+            noise_w=noise_w,
+            sentence_silence=sentence_silence,
+        )
