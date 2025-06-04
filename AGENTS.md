@@ -25,3 +25,6 @@ When creating a new story, follow these steps:
 - Use sensory details to help listeners visualize scenes.
 - Keep track of character voices and speech patterns.
 - Read drafts aloud to test flow and pacing.
+
+## General Guidelines
+- dont orient on the other stories, just write the story you want to write as good as you can.
