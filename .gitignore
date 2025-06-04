@@ -1,0 +1,4 @@
+__pycache__/
+piper_voices/
+
+audiobooks/*.wav
